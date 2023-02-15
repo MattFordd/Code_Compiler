@@ -2,7 +2,7 @@
 
 **INTELLIJ PROJECT** 
 
-Written in Java along with the use of ANTLR.
+Written in Java along with the use of ANTLR as part of a University assignment.
 
 A Lexer and Parser for a simple programming language. 
 
