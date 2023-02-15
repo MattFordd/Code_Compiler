@@ -1,0 +1,44 @@
+grammar DemoLang;
+
+prog
+    : method+ EOF
+;
+
+method: TYPE IDFR '(' param ')' body;
+
+param: (TYPE IDFR (',' TYPE IDFR)*)?;
+
+body
+    : '{' (TYPE IDFR ':=' exp ';')* ene '}'
+;
+
+block:'{' ene '}';
+
+ene: exp (';' exp)*;
+
+exp
+    : IDFR                                  #Identifier
+    | IntLit                                #Int
+    | BoolLit                               #Bool
+    | IDFR ':=' exp                         #Assign
+    | '(' exp BINOP exp ')'                 #Binop
+    | IDFR '(' (args)? ')'                  #CallFunction
+    | block                                 #CodeBlock
+    | 'if' exp 'then' block 'else' block    #IfElse //if binop then...
+    | 'while' exp 'do' block                #While //while binop then...
+    | 'repeat' block 'until' exp            #Repeat //repeat ... until binop
+    | 'print' exp                           #Print
+    | 'space'                               #Space
+    | 'newline'                             #NewLine
+    | 'skip'                                #Skip
+;
+
+args: (exp (',' exp)*);
+
+TYPE   : 'int' | 'bool' | 'unit';
+BINOP  : '==' | '<' | '>' | '<=' | '>='
+        | '+' | '-' | '*' | '/' | '&' | '|' | '^';
+IntLit : '0' | ('-'? [1-9][0-9]*) ;
+BoolLit: 'true' | 'false';
+WS     : [ \n\r\t]+ -> skip ;
+IDFR   : [a-z][A-Za-z0-9_]*;

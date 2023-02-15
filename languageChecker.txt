@@ -1,0 +1,895 @@
+public class DemoLangChecker extends AbstractParseTreeVisitor<String> implements DemoLangVisitor<String>
+{
+    private final Map<String, String> Methods = new HashMap<>();
+    //FOR TESTING:  k = name,   v = type
+    private MultiMap<String, Map<String, String>> MethodBody = new MultiMap<>();
+    private final MultiMap<String, Map<String, String>> MethodParam = new MultiMap<>();
+    //k1 = methodName,
+    //FOR TESTING:  k = name,   v1 = type,  v2 = methodName
+    Set<String> compOperators = new HashSet<>();
+    Set<String> otherOperations = new HashSet<>();
+    Set<String> boolOperations = new HashSet<>();
+    Set<String> punct = new HashSet<>();
+    ArrayList<String> leftTypeList = new ArrayList<>();
+    ArrayList<String> rightTypeList = new ArrayList<>();
+    Map<String, String> MethodBodyMapReplace = new HashMap<>();
+    List<Map<String,String>> MethodBodyListReplacement = new ArrayList<>();
+    MultiMap<String, Map<String, String>> newMethodBody = new MultiMap<>();
+    String currentMethodName = "";
+
+    @Override public String visitProg(DemoLangParser.ProgContext ctx) {
+        compOperators.add(">");
+        compOperators.add(">=");
+        compOperators.add("<");
+        compOperators.add("<=");
+        compOperators.add("==");
+        boolOperations.add("&");
+        boolOperations.add("|");
+        boolOperations.add("^");
+        otherOperations.add("/");
+        otherOperations.add("+");
+        otherOperations.add("-");
+        otherOperations.add("*");
+        punct.add("(");
+        punct.add(")");
+        punct.add("[");
+        punct.add("]");
+        punct.add("{");
+        punct.add("}");
+
+
+        for(int i = 0; i < ctx.method().size(); ++i){
+            currentMethodName = ctx.method(i).IDFR().getText();
+            if(!Methods.containsKey(ctx.method(i).IDFR().getText())){
+                Methods.put(ctx.method(i).IDFR().getText(), ctx.method(i).TYPE().getText());
+            } else {
+                throw new DemoTypeException().duplicatedMethodError();
+            }
+        }
+
+        for (int k = 0; k < Methods.size(); ++k){
+            currentMethodName = ctx.method(k).IDFR().getText();
+            visitMethod(ctx.method(k));
+        }
+
+        MethodBody = newMethodBody;
+
+        if (Methods.containsKey("main")) {
+            if (!Methods.get("main").equals("int")) {
+                throw new DemoTypeException().mainReturnTypeError();
+            }
+        } else {
+            throw new DemoTypeException().noMainError();
+        }
+
+        for(int j = 0; j < Methods.size(); j++){
+            currentMethodName = ctx.method(j).IDFR().getText();
+            visitBody(ctx.method(j).body()); //ERRORS?
+        }
+
+
+        Iterator<List<Map<String,String>>> i = MethodParam.values().iterator();
+        Set<String> allParams = new HashSet<>();
+        while(i.hasNext()){
+            List<Map<String,String>> k = i.next();
+            allParams.addAll(k.get(0).keySet());
+        }
+
+        Iterator<String> i1 = allParams.iterator();
+        while(i1.hasNext()) {
+            String s = i1.next();
+            if(Methods.containsKey(s)){
+                throw new DemoTypeException().parameterMethodError();
+            }
+        }
+
+        return "pass";
+    }
+
+    @Override
+    public String visitMethod(DemoLangParser.MethodContext ctx) {
+        final Map<String, String> localParams = new HashMap<>();
+        Map<String, String> paramMap = new HashMap<>();
+        Map<String, String> bodyMap = new HashMap<>();
+        List<Map<String, String>> paramList = new ArrayList<>();
+        List<Map<String, String>> bodylist = new ArrayList<>();
+
+        for(int i = 0; i < ctx.param().IDFR().size(); ++i){
+            if (ctx.param().TYPE(i).getText().equals("unit")) {
+                throw new DemoTypeException().variableParamUnitError();
+            } else if(localParams.containsKey(ctx.param().IDFR(i).getText())) {
+                throw new DemoTypeException().duplicateParameterError();
+            } else if (Methods.containsKey(ctx.param().IDFR(i).getText())){
+                throw new DemoTypeException().functionVariableError();
+            } else {
+                localParams.put(ctx.param().IDFR(i).getText(), ctx.IDFR().getText());
+                paramMap.put(ctx.param().IDFR(i).getText(), ctx.param().TYPE(i).getText());
+            }
+        }
+
+        paramList.add(paramMap);
+        MethodParam.put(ctx.IDFR().getText(), paramList);
+        if(ctx.body().exp().size() != 0) {
+            for (int j = 0; j < ctx.body().IDFR().size(); ++j) {
+                if (MethodParam.get(ctx.IDFR().getText()).get(0).containsKey(ctx.body().IDFR(j).getText())) {
+                    throw new DemoTypeException().duplicateLocalVariableError(); //GOING WRONG?
+                } else {
+                    try {
+                        Integer.parseInt(ctx.body().exp(j).getText());
+                        if (!ctx.body().TYPE(j).getText().equals("int")) {
+                            throw new DemoTypeException().assignTypeError();
+                        }
+                    } catch (NumberFormatException e) {
+                        try {
+                            if (!visitBinop((DemoLangParser.BinopContext) ctx.body().exp(j)).equals(ctx.body().TYPE(j).getText())) {
+                                throw new DemoTypeException().assignTypeError();
+                            }
+                        } catch (ClassCastException c) {
+                            if(ctx.body().TYPE(j).getText().equals("unit")){
+                                throw new DemoTypeException().variableParamUnitError();
+                            } else if (ctx.body().exp(j).getText().equals("true") || ctx.body().exp(j).getText().equals("false")) {
+                                if (!ctx.body().TYPE(j).getText().equals("bool")) {
+                                    throw new DemoTypeException().assignTypeError();
+                                }
+                            } else {
+                                if (MethodBody.get(currentMethodName) != null) {
+                                    if (!MethodBody.get(currentMethodName).get(0).containsKey(ctx.body().exp(j).getText())
+                                            && !MethodParam.get(currentMethodName).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        String s1 = ctx.body().TYPE(j).getText();
+                                        if (MethodParam.get(ctx.IDFR().getText()).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                            String s = MethodParam.get(ctx.IDFR().getText()).get(0).get(ctx.body().exp(j).getText());
+                                            if (!s1.equals(s)) {
+                                                throw new DemoTypeException().assignTypeError();
+                                            }
+                                        } else if (MethodBody.get(ctx.IDFR().getText()).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                            String s = MethodBody.get(ctx.IDFR().getText()).get(0).get(ctx.body().exp(j).getText());
+                                            if (!s1.equals(s)) {
+                                                throw new DemoTypeException().assignTypeError();
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (!MethodParam.get(currentMethodName).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        String s1 = ctx.body().TYPE(j).getText();
+                                        if (MethodParam.get(ctx.IDFR().getText()).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                            String s = MethodParam.get(ctx.IDFR().getText()).get(0).get(ctx.body().exp(j).getText());
+                                            if (!s1.equals(s)) {
+                                                throw new DemoTypeException().assignTypeError();
+                                            }
+                                        } else if (MethodBody.get(ctx.IDFR().getText()).get(0).containsKey(ctx.body().exp(j).getText())) {
+                                            String s = MethodBody.get(ctx.IDFR().getText()).get(0).get(ctx.body().exp(j).getText());
+                                            if (!s1.equals(s)) {
+                                                throw new DemoTypeException().assignTypeError();
+                                            }
+                                        }
+                                    }
+                                }
+
+                            }
+
+                        }
+                    }
+                }
+
+                if (MethodBody.get(currentMethodName) != null) {
+                    if(ctx.body().IDFR(j).getText().equals("unit")){
+                        throw new DemoTypeException().variableParamUnitError();
+                    } else if (MethodBody.get(currentMethodName).get(0).containsKey(ctx.body().IDFR(j).getText())
+                            || MethodParam.get(currentMethodName).get(0).containsKey(ctx.body().IDFR(j).getText())) {
+                        throw new DemoTypeException().duplicateLocalVariableError();
+                    }else if (Methods.containsKey(ctx.body().IDFR(j).getText())){
+                        throw new DemoTypeException().functionVariableError();
+                    } else {
+                        bodyMap.put(ctx.body().IDFR(j).getText(), ctx.body().TYPE(j).getText());
+                        bodylist.add(bodyMap);
+                        MethodBody.put(ctx.IDFR().getText(), bodylist);
+                    }
+                } else {
+                    if(ctx.body().IDFR(j).getText().equals("unit")){
+                        throw new DemoTypeException().variableParamUnitError();
+                    } else if (MethodParam.get(currentMethodName).get(0).containsKey(ctx.body().IDFR(j).getText())) {
+                        throw new DemoTypeException().duplicateLocalVariableError();
+                    } else if (Methods.containsKey(ctx.body().IDFR(j).getText())) {
+                        throw new DemoTypeException().functionVariableError();
+                    } else {
+                        bodyMap.put(ctx.body().IDFR(j).getText(), ctx.body().TYPE(j).getText());
+                        bodylist.add(bodyMap);
+                        MethodBody.put(ctx.IDFR().getText(), bodylist);
+                    }
+                }
+
+            }
+
+            MethodBodyMapReplace = new HashMap<>();
+            MethodBodyListReplacement = new ArrayList<>();
+
+            MethodBodyMapReplace = MethodBody.get(ctx.IDFR().getText()).get(0);
+            MethodBodyListReplacement.add(MethodBodyMapReplace);
+            newMethodBody.put(ctx.IDFR().getText(), MethodBodyListReplacement);
+        } else {
+            MethodBodyMapReplace = new HashMap<>();
+            MethodBodyListReplacement = new ArrayList<>();
+            MethodBodyListReplacement.add(MethodBodyMapReplace);
+            newMethodBody.put(ctx.IDFR().getText(), MethodBodyListReplacement);
+        }
+
+        return null;
+    }
+
+    @Override
+    public String visitParam(DemoLangParser.ParamContext ctx) {
+        return null;
+    }
+
+    @Override public String visitArgs(DemoLangParser.ArgsContext ctx)
+    {
+        throw new RuntimeException("Should not be here!");
+    }
+
+    @Override public String visitBody(DemoLangParser.BodyContext ctx)
+    {
+        Map<String, String> x = MethodBody.get(ctx.getParent().getChild(1).getText()).get(0);
+        List<Map<String, String>> l = MethodBody.get(ctx.getParent().getChild(1).getText());
+        if(ctx.ene() != null) {
+            for (int i = 0; i < ctx.ene().exp().size(); ++i) {
+                String current = ctx.ene().exp(i).getChild(0).getText();
+                try {
+                    visitBinop((DemoLangParser.BinopContext) ctx.ene().exp(i));
+                } catch (ClassCastException cce) {
+                    try {
+                        Integer.parseInt(ctx.ene().exp(i).getText());
+                    } catch (NumberFormatException nfe) {
+                        switch (current) {
+                            case "unit":
+                                throw new DemoTypeException().variableParamUnitError();
+                            case "int":
+                            case "bool":
+                                if (MethodBody.get(ctx.getParent().getChild(1).getText()).get(0).containsKey(ctx.ene().exp(i).getChild(1).getText())
+                                        || MethodParam.get(ctx.getParent().getChild(1).getText()).get(0).containsKey(ctx.ene().exp(i).getChild(1).getText())) {
+                                    throw new DemoTypeException().duplicateLocalVariableError();
+                                }
+                                x.put(ctx.ene().exp(i).getChild(1).getText(), current);
+                                if (ctx.ene().exp(i).getChild(1) != null && ctx.ene().exp(i).getChild(1).getText().equals(":=")) {
+                                    visitAssign((DemoLangParser.AssignContext) ctx.ene().exp(i));
+                                }
+                                break;
+                            case "while":
+                                visitWhile((DemoLangParser.WhileContext) ctx.ene().exp(i));
+                                break;
+                            case "if":
+                                visitIfElse((DemoLangParser.IfElseContext) ctx.ene().exp(i));
+                                break;
+                            case "repeat":
+                                visitRepeat((DemoLangParser.RepeatContext) ctx.ene().exp(i));
+                                break;
+                            case "print":
+                                visitPrint((DemoLangParser.PrintContext) ctx.ene().exp(i));
+                                break;
+                            case "space":
+                                visitSpace((DemoLangParser.SpaceContext) ctx.ene().exp(i));
+                                break;
+                            case "newline":
+                                visitNewLine((DemoLangParser.NewLineContext) ctx.ene().exp(i));
+                                break;
+                            case "skip":
+                                visitSkip((DemoLangParser.SkipContext) ctx.ene().exp(i));
+                                break;
+                            default:
+                                if (ctx.ene().exp(i).getChild(1) == null && (ctx.ene().exp(i).getText().equals("true") || ctx.ene().exp(i).getText().equals("false"))){
+                                    if(!Methods.get(currentMethodName).equals("bool")){
+                                        throw new DemoTypeException().returnTypeError();
+                                    }
+                                } else if (ctx.ene().exp(i).getChild(1) != null && ctx.ene().exp(i).getChild(1).getText().equals(":=")) {
+                                    visitAssign((DemoLangParser.AssignContext) ctx.ene().exp(i));
+                                } else if (Methods.containsKey(current)) {
+                                    visitCallFunction((DemoLangParser.CallFunctionContext) ctx.ene().exp(i));
+                                } else if (!Methods.containsKey(current) && ctx.ene().exp(i).getChild(1) != null
+                                        && ctx.ene().exp(i).getChild(1).getText().equals("(")) {
+                                    throw new DemoTypeException().unknownFunctionError();
+                                } else if (!MethodBody.get(currentMethodName).get(0).containsKey(current)
+                                        && !MethodParam.get(currentMethodName).get(0).containsKey(current)) {
+                                    throw new DemoTypeException().unknownVariableError();
+                                }
+                                break;
+                        }
+                    }
+                }
+
+            }
+        }
+        if(MethodBody.get(currentMethodName) != null && MethodBody.get(currentMethodName).get(0).containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getText())){
+            if(!Methods.get(currentMethodName).equals(MethodBody.get(currentMethodName).get(0).get(ctx.ene().exp(ctx.ene().exp().size() -1).getText()))){
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else if (MethodParam.get(currentMethodName) != null && MethodParam.get(currentMethodName).get(0).containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getText())) {
+            if (!Methods.get(currentMethodName).equals(MethodParam.get(currentMethodName).get(0).get(ctx.ene().exp(ctx.ene().exp().size() - 1).getText()))) {
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else if (Methods.containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getChild(0).getText())){
+            if(!Methods.get(ctx.ene().exp(ctx.ene().exp().size() -1).getChild(0).getText()).equals(Methods.get(currentMethodName))){
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else {
+            try{
+                Integer.parseInt(ctx.ene().exp(ctx.ene().exp().size() -1).getText());
+                if(!Methods.get(currentMethodName).equals("int")){
+                    throw new DemoTypeException().returnTypeError();
+                }
+            } catch (NumberFormatException n) {
+                try {
+                    if (!Methods.get(currentMethodName).equals(visitBinop((DemoLangParser.BinopContext) ctx.ene().exp(ctx.ene().exp().size() - 1)))) {
+                        throw new DemoTypeException().returnTypeError();
+                    }
+                } catch (ClassCastException c1){
+                    if(ctx.ene().exp(ctx.ene().exp().size() -1).getText().equals("true") || ctx.ene().exp(ctx.ene().exp().size() -1).getText().equals("false")){
+                        if (!Methods.get(currentMethodName).equals("bool")){
+                            throw new DemoTypeException().returnTypeError();
+                        }
+                    }
+                }
+            }
+        }
+        MethodBody.put(ctx.getParent().getChild(1).getText(), l);
+        return null;
+    }
+
+    @Override
+    public String visitIdentifier(DemoLangParser.IdentifierContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitInt(DemoLangParser.IntContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitBool(DemoLangParser.BoolContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitAssign(DemoLangParser.AssignContext ctx) {
+        String current = ctx.exp().getChild(0).getText();
+        String target = "";
+        String actual = "";
+        //FINDING THE TARGET TYPE
+        if (!MethodParam.get(currentMethodName).get(0).containsKey(ctx.IDFR().getText())
+                && !MethodBody.get(currentMethodName).get(0).containsKey(ctx.IDFR().getText())) {
+            throw new DemoTypeException().unknownVariableError();
+
+        } else if (MethodParam.get(currentMethodName).get(0).get(ctx.IDFR().getText()) != null){
+            target = MethodParam.get(currentMethodName).get(0).get(ctx.IDFR().getText());
+
+        } else if (MethodBody.get(currentMethodName).get(0).get(ctx.IDFR().getText()) != null){
+            target = MethodBody.get(currentMethodName).get(0).get(ctx.IDFR().getText());
+
+        }
+
+        //FINDING THE ACTUAL TYPE
+        try {
+            Integer.parseInt(ctx.exp().getText());
+            actual = "int";
+        } catch (NumberFormatException n) {
+            if (ctx.exp().getText().equals("true") || ctx.exp().getText().equals("false")) {
+                actual = "bool";
+            } else {
+                try {
+                    actual = visitBinop((DemoLangParser.BinopContext) ctx.exp());
+                } catch (ClassCastException c) {
+                    for (String methodNames : MethodParam.keySet()) {
+                        if (!MethodParam.get(methodNames).get(0).containsKey(ctx.exp().getText())
+                                && !MethodBody.get(methodNames).get(0).containsKey(ctx.exp().getText())) {
+                            throw new DemoTypeException().unknownVariableError();
+
+                        } else if (MethodParam.get(methodNames).get(0).get(ctx.exp().getText()) != null) {
+                            actual = MethodParam.get(methodNames).get(0).get(ctx.exp().getText());
+                            break;
+
+                        } else if (MethodBody.get(methodNames).get(0).get(ctx.exp().getText()) != null) {
+                            actual = MethodBody.get(methodNames).get(0).get(ctx.exp().getText());
+                            break;
+                        }
+
+                    }
+                }
+            }
+        }
+        if(!actual.equals(target)){
+            throw new DemoTypeException().assignTypeError();
+        }
+
+        return null;
+    }
+
+    @Override
+    public String visitBinop(DemoLangParser.BinopContext ctx) {
+        String currentOp = ctx.BINOP().getText();
+        ArrayList<String> locLeftTypeList = new ArrayList<>();
+        ArrayList<String> locRightTypeList = new ArrayList<>();
+
+        for(int i = 0; i < ctx.exp().size(); ++i){
+            try{
+                visitBinop((DemoLangParser.BinopContext) ctx.exp(i));
+                if(i == 0){
+                    locLeftTypeList.add(visitBinop((DemoLangParser.BinopContext) ctx.exp(i)));
+                } else {
+                    locRightTypeList.add(visitBinop((DemoLangParser.BinopContext) ctx.exp(i)));
+                }
+            } catch(ClassCastException e){
+
+                try{
+                    int n = Integer.parseInt(ctx.exp(i).getText());
+                    if(i == 0){
+                        locLeftTypeList.add("int");
+                    } else {
+                        locRightTypeList.add("int");
+                    }
+                } catch (NumberFormatException ex) {
+                    if(ctx.exp(i).getText().equals("true") || ctx.exp(i).getText().equals("false")) {
+                        if(i == 0){
+                            locLeftTypeList.add("bool");
+                        } else {
+                            locRightTypeList.add("bool");
+                        }
+                    } else {
+                        if(ctx.exp(i).getChild(0).getText().equals(currentMethodName)){
+                            if(!Methods.get(currentMethodName).equals("int")){
+                                throw new DemoTypeException().intCompOpError();
+                            }
+                            visitCallFunction((DemoLangParser.CallFunctionContext) ctx.exp(i));
+                            if(i == 0){
+                                locLeftTypeList.add(Methods.get(ctx.exp(i).getChild(0).getText()));
+                            } else {
+                                locRightTypeList.add(Methods.get(ctx.exp(i).getChild(0).getText()));
+                            }
+                        }else if (Methods.containsKey(ctx.exp(i).getChild(0).getText())){
+                            visitCallFunction((DemoLangParser.CallFunctionContext) ctx.exp(i));
+                            if(i == 0){
+                                locLeftTypeList.add(Methods.get(ctx.exp(i).getChild(0).getText()));
+                            } else {
+                                locRightTypeList.add(Methods.get(ctx.exp(i).getChild(0).getText()));
+                            }
+                        } else if(!MethodParam.get(currentMethodName).get(0).containsKey(ctx.exp(i).getText())
+                                && !MethodBody.get(currentMethodName).get(0).containsKey(ctx.exp(i).getText())){
+                            throw new DemoTypeException().unknownVariableError();
+                        } else if (MethodParam.get(currentMethodName).get(0).get(ctx.exp(i).getText()) != null){
+                            String s = MethodParam.get(currentMethodName).get(0).get(ctx.exp(i).getText());
+                            if(i == 0){
+                                locLeftTypeList.add(s);
+                            } else {
+                                locRightTypeList.add(s);
+                            }
+                        } else if (MethodBody.get(currentMethodName).get(0).get(ctx.exp(i).getText()) != null){
+                            String s1 = MethodBody.get(currentMethodName).get(0).get(ctx.exp(i).getText());
+                            if(i == 0){
+                                locLeftTypeList.add(s1);
+                            } else {
+                                locRightTypeList.add(s1);
+                            }
+                        } else {
+                            String s2 = Methods.get(currentMethodName);
+                        }
+
+
+                    }
+                }
+            }
+        }
+
+
+        switch (currentOp) {
+
+            case "==":
+            case ">=":
+            case "<=":
+            case ">":
+            case "<":
+                for (int j = 0; j < locLeftTypeList.size(); ++j) {
+                    if (!locLeftTypeList.get(j).equals("int") || !locRightTypeList.get(j).equals("int")) {
+                        throw new DemoTypeException().intCompOpError();
+                    }
+                }
+
+                return "bool";
+
+            case "+":
+            case "-":
+            case "/":
+            case "*":
+                for (int j = 0; j < locLeftTypeList.size(); ++j) {
+                    if (!locLeftTypeList.get(j).equals("int")) {
+                        throw new DemoTypeException().arithExpOpError();
+                    }
+                }
+                for (int k = 0; k < locRightTypeList.size(); ++k) {
+                    if (!locRightTypeList.get(k).equals("int")) {
+                        throw new DemoTypeException().arithExpOpError();
+                    }
+                }
+                return "int";
+
+            case "&":
+            case "|":
+            case "^":
+                for (int j = 0; j < locLeftTypeList.size(); ++j) {
+                    if (!locLeftTypeList.get(j).equals("bool")) {
+                        throw new DemoTypeException().boolExpOpError();
+                    }
+                }
+                for (int k = 0; k < locRightTypeList.size(); ++k) {
+                    if (!locRightTypeList.get(k).equals("bool")) {
+                        throw new DemoTypeException().boolExpOpError();
+                    }
+                }
+                return "bool";
+        }
+        //use for while, repeat, and if statements
+
+        return "int";
+    }
+
+    @Override
+    public String visitCallFunction(DemoLangParser.CallFunctionContext ctx) {
+        Collection<String> c = MethodParam.get(ctx.IDFR().getText()).get(0).values();
+        List<String> l = new ArrayList<>(c); // original types
+        List<String> types = new ArrayList<>();
+        for(int i = 0; i < ctx.args().exp().size(); ++i){
+            String current = ctx.args().exp(i).getText();
+            try {
+                Integer.parseInt(ctx.args().exp(i).getText());
+                types.add("int");
+            } catch (NumberFormatException e){
+                try {
+                    types.add(visitBinop((DemoLangParser.BinopContext) ctx.args().exp(i)));
+                } catch (ClassCastException ce) {
+                    if(current.equals("true") || current.equals("false")) {
+                        types.add("bool");
+                    }
+                    else if(Methods.containsKey(ctx.args().exp(i).getChild(0).getText())){
+                        types.add(visitCallFunction((DemoLangParser.CallFunctionContext) ctx.args().exp(i)));
+                    } else if(!Methods.containsKey(ctx.args().exp(i).getChild(0).getText()) && ctx.args().exp(i).getChild(1) != null
+                            && ctx.args().exp(i).getChild(1).getText().equals("(")){
+                        throw new DemoTypeException().unknownFunctionError();
+                    } else if(MethodParam.get(currentMethodName).get(0).containsKey(current)){
+                        types.add(MethodParam.get(currentMethodName).get(0).get(current));
+                    } else if(MethodBody.get(currentMethodName).get(0).containsKey(current)){
+                        types.add(MethodBody.get(currentMethodName).get(0).get(current));
+                    } else {
+                        throw new DemoTypeException().unknownVariableError();
+                    }
+
+                }
+            }
+        }
+
+        if(types.size() != l.size()){
+            throw new DemoTypeException().notSameAmountArgumentsError();
+        } else {
+            for (int j = 0; j < types.size(); j++){
+                if(!l.get(j).equals(types.get(j))){
+                    throw new DemoTypeException().argumentParamError();
+                }
+            }
+        }
+
+        return Methods.get(ctx.IDFR().getText());
+    }
+
+    @Override
+    public String visitCodeBlock(DemoLangParser.CodeBlockContext ctx) {
+        visitEne(ctx.block().ene());
+        return null;
+    }
+
+    @Override
+    public String visitIfElse(DemoLangParser.IfElseContext ctx) {
+        leftTypeList = new ArrayList<>();
+        rightTypeList = new ArrayList<>();
+
+        try {
+            visitBinop((DemoLangParser.BinopContext) ctx.exp());
+        } catch (ClassCastException cce){
+            try {
+                visitCodeBlock((DemoLangParser.CodeBlockContext) ctx.exp());
+            } catch (ClassCastException cce2){
+
+            }
+        }
+        for(int i = 0; i < ctx.block().size(); i++){
+            visitBlock(ctx.block(i));
+        }
+
+        return null;
+    }
+
+    @Override
+    public String visitWhile(DemoLangParser.WhileContext ctx) {
+        leftTypeList = new ArrayList<>();
+        rightTypeList = new ArrayList<>();
+        try {
+            visitBinop((DemoLangParser.BinopContext) ctx.exp());
+        } catch (ClassCastException c){
+            if(MethodParam.get(currentMethodName) != null && MethodParam.get(currentMethodName).get(0).containsKey(ctx.exp().getText())){
+                if(!MethodParam.get(currentMethodName).get(0).get(ctx.exp().getText()).equals("bool")){
+                    throw new DemoTypeException().invalidLoopIfCondError();
+                }
+            } else if (MethodBody.get(currentMethodName) != null && MethodBody.get(currentMethodName).get(0).containsKey(ctx.exp().getText())){
+                if(!MethodBody.get(currentMethodName).get(0).get(ctx.exp().getText()).equals("bool")){
+                    throw new DemoTypeException().invalidLoopIfCondError();
+                }
+            } else {
+                throw new DemoTypeException().unknownVariableError();
+            }
+        }
+        visitBlock(ctx.block());
+        return null;
+    }
+
+    @Override
+    public String visitRepeat(DemoLangParser.RepeatContext ctx) {
+        leftTypeList = new ArrayList<>();
+        rightTypeList = new ArrayList<>();
+        try {
+            visitBinop((DemoLangParser.BinopContext) ctx.exp());
+        } catch (ClassCastException c){
+            if(MethodParam.get(currentMethodName) != null && MethodParam.get(currentMethodName).get(0).containsKey(ctx.exp().getText())){
+                if(!MethodParam.get(currentMethodName).get(0).get(ctx.exp().getText()).equals("bool")){
+                    throw new DemoTypeException().invalidLoopIfCondError();
+                }
+            } else if (MethodBody.get(currentMethodName) != null && MethodBody.get(currentMethodName).get(0).containsKey(ctx.exp().getText())){
+                if(!MethodBody.get(currentMethodName).get(0).get(ctx.exp().getText()).equals("bool")){
+                    throw new DemoTypeException().invalidLoopIfCondError();
+                }
+            } else {
+                throw new DemoTypeException().unknownVariableError();
+            }
+        }
+        visitBlock(ctx.block());
+
+        return null;
+    }
+
+    @Override
+    public String visitPrint(DemoLangParser.PrintContext ctx) {
+        String s = "";
+        boolean isVariable = false;
+        try{
+            s = visitBinop((DemoLangParser.BinopContext) ctx.exp());
+        } catch (ClassCastException c) {
+            try {
+                Integer.parseInt(ctx.exp().getText());
+                s = "int";
+            } catch (NumberFormatException n) {
+                String current = ctx.exp().getText();
+                switch(current) {
+                    case "space":
+                        s = "space";
+                        break;
+                    case "newline":
+                        s = "newline";
+                        break;
+                    case "true":
+                    case "false":
+                        throw new DemoTypeException().invalidPrintExpError();
+                    default:
+                        if(ctx.exp().getChild(0).getText().equals("if")) {
+                            visitIfElse((DemoLangParser.IfElseContext) ctx.exp());
+                            s = "if";
+                        } else {
+                            try {
+                                MethodBody.get(currentMethodName);
+                                try {
+                                    MethodParam.get(currentMethodName);
+                                    if (!MethodBody.get(currentMethodName).get(0).containsKey(ctx.exp().getText())
+                                            && !MethodParam.get(currentMethodName).get(0).containsKey(ctx.exp().getText())) {
+                                        System.out.println(ctx.exp().getText());
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        s = "variable";
+                                    }
+                                } catch (NullPointerException np) {
+                                    if (!MethodBody.get(currentMethodName).get(0).containsKey(ctx.exp().getText())) {
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        s = "variable";
+                                    }
+                                }
+                            } catch (NullPointerException npe) {
+                                try {
+                                    MethodParam.get(currentMethodName);
+                                    if (!MethodParam.get(currentMethodName).get(0).containsKey(ctx.exp().getText())) {
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        s = "variable";
+                                    }
+                                } catch (NullPointerException npex) {
+                                    throw new DemoTypeException().unknownVariableError();
+                                }
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+        if(!s.equals("int") && !s.equals("newline") && !s.equals("space") && !s.equals("variable") && !s.equals("if")){
+            throw new DemoTypeException().invalidPrintExpError();
+        }
+        return null;
+    }
+
+    @Override
+    public String visitSpace(DemoLangParser.SpaceContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitNewLine(DemoLangParser.NewLineContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitSkip(DemoLangParser.SkipContext ctx) {
+        return null;
+    }
+
+    @Override
+    public String visitEne(DemoLangParser.EneContext ctx) {
+        for(int i = 0; i < ctx.exp().size(); ++i){
+            String current = ctx.exp(i).getChild(0).getText();
+            switch (current){
+                case "while":
+                    visitWhile((DemoLangParser.WhileContext) ctx.exp(i));
+                    break;
+                case "if":
+                    visitIfElse((DemoLangParser.IfElseContext) ctx.exp(i));
+                    break;
+                case "repeat":
+                    visitRepeat((DemoLangParser.RepeatContext) ctx.exp(i));
+                    break;
+                case "print":
+                    visitPrint((DemoLangParser.PrintContext) ctx.exp(i));
+                    break;
+                case "space":
+                    visitSpace((DemoLangParser.SpaceContext) ctx.exp(i));
+                    break;
+                case "newline":
+                    visitNewLine((DemoLangParser.NewLineContext) ctx.exp(i));
+                    break;
+                case "skip":
+                    visitSkip((DemoLangParser.SkipContext) ctx.exp(i));
+                    break;
+                default:
+                    try {
+                        if(Methods.containsKey(current)){
+                            visitCallFunction((DemoLangParser.CallFunctionContext) ctx.exp(i));
+                        } else if (!Methods.containsKey(current) && ctx.exp(i).getChild(1) != null
+                                && ctx.exp(i).getChild(1).getText().equals("(")) {
+                            throw new DemoTypeException().unknownFunctionError();
+                        } else if (!MethodParam.get(ctx.getParent().getParent().getParent().getParent().getParent().getChild(1).getText()).get(0).containsKey(current)
+                                && !MethodBody.get(ctx.getParent().getParent().getParent().getParent().getParent().getChild(1).getText()).get(0).containsKey(current)) {
+                            throw new DemoTypeException().unknownVariableError();
+                        }
+                    } catch (NullPointerException npe){
+                        if(Methods.containsKey(current)){
+                            visitCallFunction((DemoLangParser.CallFunctionContext) ctx.exp(i));
+                        } else if (!Methods.containsKey(current) && ctx.exp(i).getChild(1) != null
+                                && ctx.exp(i).getChild(1).getText().equals("(")) {
+                            throw new DemoTypeException().unknownFunctionError();
+                        }else if (!MethodParam.get(ctx.getParent().getParent().getParent().getParent().getParent().getParent().getChild(1).getText()).get(0).containsKey(current)
+                                && !MethodBody.get(ctx.getParent().getParent().getParent().getParent().getParent().getParent().getChild(1).getText()).get(0).containsKey(current)) {
+                            throw new DemoTypeException().unknownVariableError();
+                        }
+                    }
+                    break;
+            }
+        }
+        return null;
+    }
+
+    @Override public String visitBlock(DemoLangParser.BlockContext ctx)
+    {
+        for(int i = 0; i < ctx.ene().exp().size(); ++i){
+            String current = ctx.ene().exp(i).getChild(0).getText();
+            switch (current) {
+                case "int":
+                case "bool":
+                    break;
+                case "while":
+                    visitWhile((DemoLangParser.WhileContext) ctx.ene().exp(i));
+                    break;
+                case "if":
+                    visitIfElse((DemoLangParser.IfElseContext) ctx.ene().exp(i));
+                    break;
+                case "repeat":
+                    visitRepeat((DemoLangParser.RepeatContext) ctx.ene().exp(i));
+                    break;
+                case "print":
+                    visitPrint((DemoLangParser.PrintContext) ctx.ene().exp(i));
+                    break;
+                case "space":
+                    visitSpace((DemoLangParser.SpaceContext) ctx.ene().exp(i));
+                    break;
+                case "newline":
+                    visitNewLine((DemoLangParser.NewLineContext) ctx.ene().exp(i));
+                    break;
+                case "skip":
+                    visitSkip((DemoLangParser.SkipContext) ctx.ene().exp(i));
+                    break;
+                default:
+                    if(Methods.containsKey(current)){
+                        visitCallFunction((DemoLangParser.CallFunctionContext) ctx.ene().exp(i));
+                    } else if (!Methods.containsKey(current) && ctx.ene().exp(i).getChild(1) != null
+                            && ctx.ene().exp(i).getChild(1).getText().equals("(")){
+                        throw new DemoTypeException().unknownFunctionError();
+                    } else {
+                        try{
+                            Integer.parseInt(ctx.ene().exp(i).getText());
+                        } catch (NumberFormatException nfe) {
+                            if (current.equals("true") || current.equals("false")) {
+                            } else {
+                                try {
+                                    visitBinop((DemoLangParser.BinopContext) ctx.ene().exp(i));
+                                } catch (ClassCastException cce) {
+                                    if (!MethodParam.get(currentMethodName).get(0).containsKey(current) &&
+                                            !MethodBody.get(currentMethodName).get(0).containsKey(current)) {
+                                        throw new DemoTypeException().unknownVariableError();
+                                    } else {
+                                        try {
+                                            if (ctx.ene().exp(i).getChild(1).getText().equals(":=")) {
+                                                visitAssign((DemoLangParser.AssignContext) ctx.ene().exp(i));
+                                            }
+                                        } catch (NullPointerException ex) {
+
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                    break;
+            }
+        }
+
+        if(MethodBody.get(currentMethodName) != null && MethodBody.get(currentMethodName).get(0).containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getText())){
+            if(!Methods.get(currentMethodName).equals(MethodBody.get(currentMethodName).get(0).get(ctx.ene().exp(ctx.ene().exp().size() -1).getText()))){
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else if (MethodParam.get(currentMethodName) != null && MethodParam.get(currentMethodName).get(0).containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getText())) {
+            if (!Methods.get(currentMethodName).equals(MethodParam.get(currentMethodName).get(0).get(ctx.ene().exp(ctx.ene().exp().size() - 1).getText()))) {
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else if (Methods.containsKey(ctx.ene().exp(ctx.ene().exp().size() -1).getChild(0).getText())){
+            if(!Methods.get(ctx.ene().exp(ctx.ene().exp().size() -1).getChild(0).getText()).equals(Methods.get(currentMethodName))){
+                throw new DemoTypeException().returnTypeError();
+            }
+        } else {
+            try{
+                Integer.parseInt(ctx.ene().exp(ctx.ene().exp().size() -1).getText());
+                if(!Methods.get(currentMethodName).equals("int")){
+                    throw new DemoTypeException().returnTypeError();
+                }
+            } catch (NumberFormatException n) {
+                try {
+                    if (!Methods.get(currentMethodName).equals(visitBinop((DemoLangParser.BinopContext) ctx.ene().exp(ctx.ene().exp().size() - 1)))) {
+                        throw new DemoTypeException().returnTypeError();
+                    }
+                } catch (ClassCastException c1){
+                    if(ctx.ene().exp(ctx.ene().exp().size() -1).getText().equals("true") || ctx.ene().exp(ctx.ene().exp().size() -1).getText().equals("false")){
+                        if (!Methods.get(currentMethodName).equals("bool")){
+                            throw new DemoTypeException().returnTypeError();
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+}

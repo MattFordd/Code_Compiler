@@ -1,0 +1,138 @@
+public class DemoTypeException extends RuntimeException
+{
+
+    private String msg;
+
+    public DemoTypeException()
+    {
+        super();
+    }
+
+    // Error information is to be determined separately on a case-by-case basis (see below).
+    public DemoTypeException(String errmsg)
+    {
+        msg = errmsg;
+    }
+
+    // A method to generate a report of the error as a string.
+    public String report()
+    {
+        return msg;
+    }
+
+    // A method to produce an exception for the 'incompatible operands' error.
+    public DemoTypeException mainReturnTypeError()
+    {
+        msg = "Wrong return type declared for main function";
+        return this;
+    }
+
+    public DemoTypeException returnTypeError()
+    {
+        msg = "Invalid return value type";
+        return this;
+    }
+
+    public DemoTypeException duplicatedMethodError()
+    {
+        msg = "Duplicated function names";
+        return this;
+    }
+
+    public DemoTypeException assignTypeError()
+    {
+        msg = "Incompatible types in assignment";
+        return this;
+    }
+
+    public DemoTypeException incompatibleOperandsError()
+    {
+        msg = "Attempted to use incompatible operands with a binary operator";
+        return this;
+    }
+
+    public DemoTypeException condError()
+    {
+        msg = "Attempted to use an INT expression as a condition";
+        return this;
+    }
+
+    public DemoTypeException noMainError(){
+        msg = "No main function defined";
+        return this;
+    }
+
+    public DemoTypeException duplicateParameterError(){
+        msg = "Attempted to define a parameter that has already been defined in the local scope";
+        return this;
+    }
+
+    public DemoTypeException parameterMethodError(){
+        msg = "Parameter name cannot be the same as a method name";
+        return this;
+    }
+
+    public DemoTypeException duplicateLocalVariableError(){
+        msg = "Duplicated variable names";
+        return this;
+    }
+
+    public DemoTypeException mustBeBooleanError(){
+        msg = "The type of the operation must be boolean";
+        return this;
+    }
+
+    public DemoTypeException notSameAmountArgumentsError(){
+        msg = "Invalid # of arguments in invocation";
+        return this;
+    }
+
+    public DemoTypeException argumentParamError(){
+        msg = "Invalid argument type in invocation";
+        return this;
+    }
+
+    public DemoTypeException functionVariableError(){
+        msg = "A variable name clashed with a function name";
+        return this;
+    }
+
+    public DemoTypeException variableParamUnitError(){
+        msg = "Variable of unit type";
+        return this;
+    }
+
+    public DemoTypeException invalidLoopIfCondError(){
+        msg = "Invalid condition in if expression or loop";
+        return this;
+    }
+
+    public DemoTypeException invalidPrintExpError(){
+        msg = "Invalid expression for print";
+        return this;
+    }
+
+    public DemoTypeException unknownFunctionError(){
+        msg = "Unknown function name";
+        return this;
+    }
+    public DemoTypeException unknownVariableError(){
+        msg = "Unknown variable name";
+        return this;
+    }
+
+    public DemoTypeException intCompOpError(){
+        msg = "Invalid operand in integer comparison";
+        return this;
+    }
+
+    public DemoTypeException arithExpOpError(){
+        msg = "Invalid operand in arithmetic expression";
+        return this;
+    }
+
+    public DemoTypeException boolExpOpError(){
+        msg = "Invalid operand in Boolean expression";
+        return this;
+    }
+}
